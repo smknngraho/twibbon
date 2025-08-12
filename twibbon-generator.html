@@ -5,135 +5,200 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Twibbon Generator</title>
 <style>
-  body {
-    background: #111;
+  body { background: #111; color: #fff; font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+  .preview-wrap { position: relative; display: inline-block; background: #000; border-radius: 6px; overflow: hidden; }
+  canvas, video { display: block; width: 300px; height: 375px; background: #fff; }
+  video { position: absolute; top: 0; left: 0; object-fit: cover; }
+  .overlay-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  .controls { margin-top: 15px; }
+  input, button, select { margin: 5px; padding: 6px 10px; }
+  #downloadBtn {
+    background: linear-gradient(135deg, #00bfff, #1e90ff);
     color: #fff;
-    font-family: Arial, sans-serif;
-    text-align: center;
-    padding: 20px;
-  }
-  #canvas-container {
-    display: inline-block;
-    background: #222;
-    border: 2px solid #555;
-  }
-  input {
-    margin: 10px 0;
-  }
-  button {
-    background: #28a745;
-    color: white;
-    padding: 10px 15px;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 12px 24px;
     border: none;
-    border-radius: 5px;
+    border-radius: 8px;
     cursor: pointer;
+    transition: 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
   }
-  button:hover {
-    background: #218838;
+  #downloadBtn:hover {
+    background: linear-gradient(135deg, #1e90ff, #00bfff);
+    transform: scale(1.05);
+  }
+  #downloadBtn svg {
+    width: 20px;
+    height: 20px;
+    fill: white;
+  }
+  /* cegah halaman ikut scroll saat drag di canvas */
+  canvas {
+    touch-action: none;
   }
 </style>
 </head>
 <body>
 
-<h2>Twibbon Generator</h2>
+<h1>Twibbon Generator</h1>
 
-<input type="file" id="upload" accept="image/*"><br>
-<div id="canvas-container">
-  <canvas id="twibbonCanvas" width="400" height="500"></canvas>
-</div><br>
-<button id="downloadBtn">Download</button>
+<div class="preview-wrap">
+  <video id="video" autoplay playsinline muted style="display:none;"></video>
+  <canvas id="canvas" width="2500" height="3125"></canvas>
+  <img src="twibbon1.png" id="overlay" class="overlay-img">
+</div>
 
-<!-- Fabric.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+<div style="margin-top:10px;">
+  <button id="captureBtn" style="display:none;">📸 Ambil Foto</button>
+</div>
+
+<div class="controls">
+ <p>Pilih File Galeri :
+  <br><input type="file" id="fileInput" accept="image/*"></p>
+  <p>Atau Pakai Kamera :
+  <br><select id="cameraSelect">
+    <option value="user">Kamera Depan</option>
+    <option value="environment">Kamera Belakang</option>
+  </select></p>
+</div>
+  <button id="startCam">Mulai Kamera</button>
+  <button id="stopCam" disabled>Stop Kamera</button>
+  <br>
+  Zoom: <input type="range" id="zoomRange" min="0.2" max="3" step="0.01" value="1">
+  Rotasi: <input type="range" id="rotateRange" min="-180" max="180" value="0">
+  <button id="flipBtn">Mirror</button>
+  <button id="resetBtn">Reset</button>
+  <br>
+  <button id="downloadBtn">Download Twibbon</button>
+
 <script>
-  const canvas = new fabric.Canvas('twibbonCanvas', {
-    backgroundColor: '#000',
-    preserveObjectStacking: true
-  });
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const fileInput = document.getElementById('fileInput');
+const video = document.getElementById('video');
+const startCam = document.getElementById('startCam');
+const stopCam = document.getElementById('stopCam');
+const captureBtn = document.getElementById('captureBtn');
+const cameraSelect = document.getElementById('cameraSelect');
+const zoomRange = document.getElementById('zoomRange');
+const rotateRange = document.getElementById('rotateRange');
+const flipBtn = document.getElementById('flipBtn');
+const resetBtn = document.getElementById('resetBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const overlay = document.getElementById('overlay');
 
-  let userImage = null;
-  const overlayPath = 'twibbon1.png';
+let userImg = null;
+let scale = 1, rotation = 0, flip = 1, tx = 0, ty = 0;
+let dragging = false, lastX = 0, lastY = 0;
+let hasUserImage = false;
+let stream = null;
 
-  // Load overlay
-  fabric.Image.fromURL(overlayPath, function(img) {
-    img.scaleToWidth(canvas.width);
-    img.scaleToHeight(canvas.height);
-    img.selectable = false;
-    img.evented = false;
-    img.set({ selectable: false });
-    canvas.overlayImage = img;
-    canvas.renderAll();
-  });
+// Draw function (foto + overlay)
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Upload foto
-  document.getElementById('upload').addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(f) {
-      fabric.Image.fromURL(f.target.result, function(img) {
-        if (userImage) canvas.remove(userImage);
-
-        img.set({
-          left: canvas.width / 2,
-          top: canvas.height / 2,
-          originX: 'center',
-          originY: 'center'
-        });
-        img.scaleToWidth(canvas.width);
-        img.lockScalingFlip = true;
-
-        userImage = img;
-        canvas.add(userImage);
-        canvas.sendToBack(userImage);
-      });
-    };
-    reader.readAsDataURL(file);
-  });
-
-  // Download hasil 2500x3125
-  document.getElementById('downloadBtn').addEventListener('click', function() {
-    const exportCanvas = new fabric.Canvas(null, {
-      width: 2500,
-      height: 3125,
-      backgroundColor: '#000',
-      preserveObjectStacking: true
-    });
-
-    // Duplikat foto user
-    if (userImage) {
-      userImage.clone(function(clonedImg) {
-        clonedImg.scaleToWidth(exportCanvas.width);
-        clonedImg.set({
-          left: exportCanvas.width / 2,
-          top: exportCanvas.height / 2,
-          originX: 'center',
-          originY: 'center'
-        });
-        exportCanvas.add(clonedImg);
-        exportCanvas.sendToBack(clonedImg);
-
-        // Duplikat overlay
-        fabric.Image.fromURL(overlayPath, function(overlayImg) {
-          overlayImg.scaleToWidth(exportCanvas.width);
-          overlayImg.scaleToHeight(exportCanvas.height);
-          overlayImg.selectable = false;
-          exportCanvas.add(overlayImg);
-          exportCanvas.renderAll();
-
-          const dataURL = exportCanvas.toDataURL({
-            format: 'png',
-            quality: 1.0
-          });
-
-          const link = document.createElement('a');
-          link.href = dataURL;
-          link.download = 'twibbon.png';
-          link.click();
-        });
-      });
+  // Gambar foto user
+  if (hasUserImage) {
+    ctx.save();
+    ctx.translate(canvas.width / 2 + tx, canvas.height / 2 + ty);
+    ctx.rotate(rotation);
+    ctx.scale(scale * flip, scale);
+    let iw = userImg.width, ih = userImg.height;
+    let cr = canvas.width / canvas.height, ir = iw / ih;
+    let dw, dh;
+    if (ir > cr) {
+      dh = canvas.height;
+      dw = dh * ir;
+    } else {
+      dw = canvas.width;
+      dh = dw / ir;
     }
+    ctx.drawImage(userImg, -dw / 2, -dh / 2, dw, dh);
+    ctx.restore();
+  }
+
+  // Gambar overlay di atas foto
+  ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+}
+
+// Upload file
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => { userImg = img; hasUserImage = true; draw(); };
+  img.src = url;
+});
+
+// Drag foto di canvas
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  dragging = true;
+  lastX = e.clientX;
+  lastY = e.clientY;
+});
+canvas.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  e.preventDefault();
+  tx += (e.clientX - lastX) * (canvas.width / canvas.clientWidth);
+  ty += (e.clientY - lastY) * (canvas.height / canvas.clientHeight);
+  lastX = e.clientX;
+  lastY = e.clientY;
+  draw();
+});
+canvas.addEventListener('pointerup', () => dragging = false);
+
+// Zoom / Rotate / Flip / Reset
+zoomRange.addEventListener('input', () => { scale = parseFloat(zoomRange.value); draw(); });
+rotateRange.addEventListener('input', () => { rotation = parseFloat(rotateRange.value) * Math.PI/180; draw(); });
+flipBtn.addEventListener('click', () => { flip *= -1; draw(); });
+resetBtn.addEventListener('click', () => { scale=1; rotation=0; flip=1; tx=0; ty=0; zoomRange.value=1; rotateRange.value=0; draw(); });
+
+// Kamera
+startCam.addEventListener('click', async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraSelect.value } });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    captureBtn.style.display = 'inline-block';
+    stopCam.disabled = false;
+  } catch (err) {
+    alert('Tidak bisa mengakses kamera: ' + err.message);
+  }
+});
+captureBtn.addEventListener('click', () => {
+  const temp = document.createElement('canvas');
+  temp.width = video.videoWidth;
+  temp.height = video.videoHeight;
+  temp.getContext('2d').drawImage(video, 0, 0);
+  const img = new Image();
+  img.onload = () => { userImg = img; hasUserImage = true; draw(); };
+  img.src = temp.toDataURL('image/png');
+  video.style.display = 'none';
+  captureBtn.style.display = 'none';
+});
+stopCam.addEventListener('click', () => {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); }
+  video.style.display = 'none';
+  captureBtn.style.display = 'none';
+  stopCam.disabled = true;
+});
+
+// Download hasil Twibbon
+downloadBtn.addEventListener('click', () => {
+  canvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'twibbon1.png';
+    a.click();
   });
+});
 </script>
 
 </body>
