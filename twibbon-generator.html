@@ -35,6 +35,10 @@
   height: 20px;
   fill: white;
 }
+canvas {
+  touch-action: none;
+}
+
 
 </style>
 </head>
@@ -136,13 +140,22 @@ canvas.addEventListener('pointermove', e => {
   lastX = e.clientX; lastY = e.clientY;
   draw();
 });
-canvas.addEventListener('pointerup', () => dragging = false);
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault(); // cegah scroll halaman
+  dragging = true;
+  lastX = e.clientX;
+  lastY = e.clientY;
+});
 
-// Zoom / Rotate / Flip / Reset
-zoomRange.addEventListener('input', () => { scale = parseFloat(zoomRange.value); draw(); });
-rotateRange.addEventListener('input', () => { rotation = parseFloat(rotateRange.value) * Math.PI/180; draw(); });
-flipBtn.addEventListener('click', () => { flip *= -1; draw(); });
-resetBtn.addEventListener('click', () => { scale=1; rotation=0; flip=1; tx=0; ty=0; zoomRange.value=1; rotateRange.value=0; draw(); });
+canvas.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  e.preventDefault(); // cegah scroll halaman
+  tx += (e.clientX - lastX) * (canvas.width / canvas.clientWidth);
+  ty += (e.clientY - lastY) * (canvas.height / canvas.clientHeight);
+  lastX = e.clientX;
+  lastY = e.clientY;
+  draw();
+});
 
 // Kamera
 startCam.addEventListener('click', async () => {
